@@ -18,15 +18,16 @@ typedef struct {
     uint16_t view_width;
     uint16_t view_height;
     uint8_t *pixel_data;
+} EGLXvfb_t;
+
+typedef struct {
+    EGLXvfb_t *self;
     EGLNativeDisplayType display;
     EGLNativeWindowType win;
-} EGLXvfb_t;
+} EGLXvfb_thread_params_t;
 
 
 bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir);
-void EGLXvfb_set_native_window(EGLXvfb_t *self,
-                               EGLNativeDisplayType display,
-                               EGLNativeWindowType win);
 void *EGLXvfb_gl_thread(void *arg);
 uint16_t EGLXvfb_normalize_x(EGLXvfb_t *self, uint16_t x);
 uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y);

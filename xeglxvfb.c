@@ -107,9 +107,12 @@ int main(int argc, const char *argv[])
     XMapWindow(xdisplay, win);
     XStoreName(xdisplay, win, "EGL");
 
-    EGLXvfb_set_native_window(&egl_xvfb, xdisplay, win);
-
-    if (pthread_create(&gl_thread, NULL, EGLXvfb_gl_thread, &egl_xvfb)) {
+    if (pthread_create(
+            &gl_thread,
+            NULL,
+            EGLXvfb_gl_thread,
+            &(EGLXvfb_thread_params_t){.self=&egl_xvfb, .display=xdisplay, .win=win}
+        )) {
         printf("pthread_create fail\n");
         return 1;
     }

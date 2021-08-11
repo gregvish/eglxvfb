@@ -43,7 +43,9 @@ static void egl_get_extension_funcs(void)
 }
 
 
-static bool init_egl(EGLXvfb_t *self)
+static bool init_egl(EGLXvfb_t *self,
+                     EGLNativeDisplayType display,
+                     EGLNativeWindowType win)
 {
     EGLint attr[] = {
         EGL_SURFACE_TYPE,           EGL_WINDOW_BIT,
@@ -63,7 +65,7 @@ static bool init_egl(EGLXvfb_t *self)
        EGL_NONE
     };
 
-    self->egl_display = eglGetDisplay(self->display);
+    self->egl_display = eglGetDisplay(display);
     if (self->egl_display == EGL_NO_DISPLAY) {
         printf("Error getting EGL display\n");
         return false;
@@ -86,7 +88,7 @@ static bool init_egl(EGLXvfb_t *self)
     }
 
     self->egl_surface = eglCreateWindowSurface(
-        self->egl_display, self->egl_conf, self->win, NULL
+        self->egl_display, self->egl_conf, win, NULL
     );
     if (self->egl_surface == EGL_NO_SURFACE) {
         printf("CreateWindowSurface, EGL eglError: %d\n", eglGetError());
@@ -384,23 +386,15 @@ uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y)
 }
 
 
-void EGLXvfb_set_native_window(EGLXvfb_t *self,
-                               EGLNativeDisplayType display,
-                               EGLNativeWindowType win)
-{
-    self->display = display;
-    self->win = win;
-}
-
 void *EGLXvfb_gl_thread(void *arg)
 {
-    EGLXvfb_t *self = (EGLXvfb_t *)arg;
+    EGLXvfb_thread_params_t *params = (EGLXvfb_thread_params_t *)arg;
 
-    if (!init_egl(self)) {
+    if (!init_egl(params->self, params->display, params->win)) {
         printf("init_egl fail\n");
         return NULL;
     }
 
-    draw_loop(self);
+    draw_loop(params->self);
     return NULL;
 }
