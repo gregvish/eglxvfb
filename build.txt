@@ -1,0 +1,13 @@
+Xvfb -screen 0 1920x1080x24+32 +extension GLX +render -noreset -nocursor -fbdir /tmp/kaka :1
+
+gcc -o damage damage.c -lX11 -lXdamage -lXfixes && \
+    DISPLAY=:1 socat unix-l:/tmp/kaka/Xdamage,fork exec:./damage
+
+gcc -o xtest xtest.c -lX11 -lXtst && \
+    DISPLAY=:1 socat unix-l:/tmp/kaka/Xtest,fork exec:./xtest
+
+gcc -o eglvfb eglvfb.c -lGLESv2 -lEGL -lX11 -lpthread && \
+    DISPLAY=:0 ./eglvfb
+
+DISPLAY=:1 vglrun google-chrome https://doit.sh
+
