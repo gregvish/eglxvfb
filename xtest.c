@@ -15,7 +15,6 @@
 
 int main(void)
 {
-    Window root = {0};
     Display *display = NULL;
     xtest_event_t event = {0};
 
@@ -24,7 +23,6 @@ int main(void)
         printf("XOpenDisplay fail.\n");
         return 1;
     }
-    root = DefaultRootWindow(display);
 
     while (true) {
         if (sizeof(event) != read(0, &event, sizeof(event))) {

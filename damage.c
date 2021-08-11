@@ -17,18 +17,13 @@
 
 int main(void)
 {
-    int width = 0;
-    int height = 0;
     int damage_event = 0;
     int damage_error = 0;
-    int result = 0;
     int area_count = 0;
     int i = 0;
     uint8_t dummy = 0;
 
     Window root = {0};
-    XWindowAttributes attributes = {0};
-    Damage damage = {0};
     XserverRegion region = {0};
     XEvent event = {0};
     XDamageNotifyEvent *dev = NULL;
@@ -43,12 +38,8 @@ int main(void)
     }
     root = DefaultRootWindow(display);
 
-    XGetWindowAttributes(display, root, &attributes);
-    width = attributes.width;
-    height = attributes.height;
-
-    result = XDamageQueryExtension(display, &damage_event, &damage_error);
-    damage = XDamageCreate(display, root, XDamageReportNonEmpty);
+    XDamageQueryExtension(display, &damage_event, &damage_error);
+    XDamageCreate(display, root, XDamageReportNonEmpty);
 
     while (true) {
         XNextEvent(display, &event);

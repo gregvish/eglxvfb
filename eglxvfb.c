@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <fcntl.h>
@@ -9,43 +10,40 @@
 #include <sys/un.h>
 #include <sys/eventfd.h>
 #include <arpa/inet.h>
-#include <pthread.h>
 #include <poll.h>
-
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
-#include <X11/XWDFile.h>
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#include <X11/XWDFile.h>
+
 #include "damage_area.h"
-#include "xtest_event.h"
+#include "eglxvfb.h"
 
-
-// EGL-related objects
-EGLDisplay egl_display;
-EGLConfig egl_conf;
-EGLContext egl_context;
-EGLSurface egl_surface;
 
 PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
 PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
-PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
-PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
-
-int xtest_fd = -1;
-int resize_fd = -1;
-uint16_t view_width = 0;
-uint16_t view_height = 0;
-uint16_t display_width = 0;
-uint16_t display_height = 0;
 
 
-bool init_egl(EGLNativeDisplayType display, EGLNativeWindowType win)
+static void egl_get_extension_funcs(void)
+{
+    if (!glGenVertexArraysOES) {
+        glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)
+            eglGetProcAddress("glGenVertexArraysOES");
+    }
+    assert(glGenVertexArraysOES);
+
+    if (!glBindVertexArrayOES) {
+        glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)
+            eglGetProcAddress("glBindVertexArrayOES");
+    }
+    assert(glBindVertexArrayOES);
+}
+
+
+static bool init_egl(EGLXvfb_t *self)
 {
     EGLint attr[] = {
         EGL_SURFACE_TYPE,           EGL_WINDOW_BIT,
@@ -65,20 +63,20 @@ bool init_egl(EGLNativeDisplayType display, EGLNativeWindowType win)
        EGL_NONE
     };
 
-    egl_display = eglGetDisplay(display);
-    if (egl_display == EGL_NO_DISPLAY) {
+    self->egl_display = eglGetDisplay(self->display);
+    if (self->egl_display == EGL_NO_DISPLAY) {
         printf("Error getting EGL display\n");
         return false;
     }
 
-    if (!eglInitialize(egl_display, &major, &minor)) {
+    if (!eglInitialize(self->egl_display, &major, &minor)) {
         printf("Error initializing EGL\n");
         return false;
     }
 
     printf("EGL major: %d, minor %d\n", major, minor);
 
-    if (!eglChooseConfig(egl_display, attr, &egl_conf, 1, &num_config)) {
+    if (!eglChooseConfig(self->egl_display, attr, &self->egl_conf, 1, &num_config)) {
         printf("Failed to choose config (eglError: %x)\n", eglGetError());
         return false;
     }
@@ -87,42 +85,34 @@ bool init_egl(EGLNativeDisplayType display, EGLNativeWindowType win)
         return false;
     }
 
-    egl_surface = eglCreateWindowSurface(egl_display, egl_conf, win, NULL);
-    if (egl_surface == EGL_NO_SURFACE) {
+    self->egl_surface = eglCreateWindowSurface(
+        self->egl_display, self->egl_conf, self->win, NULL
+    );
+    if (self->egl_surface == EGL_NO_SURFACE) {
         printf("CreateWindowSurface, EGL eglError: %d\n", eglGetError());
         return false;
     }
 
-    egl_context = eglCreateContext(egl_display, egl_conf, EGL_NO_CONTEXT, ctxattr);
-    if (egl_context == EGL_NO_CONTEXT) {
+    self->egl_context = eglCreateContext(
+        self->egl_display, self->egl_conf, EGL_NO_CONTEXT, ctxattr
+    );
+    if (self->egl_context == EGL_NO_CONTEXT) {
         printf("CreateContext, EGL eglError: %d\n", eglGetError());
         return false;
     }
 
-    eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context);
+    eglMakeCurrent(
+        self->egl_display, self->egl_surface, self->egl_surface, self->egl_context
+    );
+    egl_get_extension_funcs();
 
     return true;
 }
 
 
-bool egl_get_extension_funcs(void)
+static void gl_setup_scene()
 {
-    glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)
-        eglGetProcAddress("glGenVertexArraysOES");
-    glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)
-        eglGetProcAddress("glBindVertexArrayOES");
-    glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)
-        eglGetProcAddress("glDeleteVertexArraysOES");
-    glIsVertexArrayOES = (PFNGLISVERTEXARRAYOESPROC)
-        eglGetProcAddress("glIsVertexArrayOES");
-
-    return true;
-}
-
-
-void gl_setup_scene()
-{
-    uint8_t err_info[1023] = {0};
+    GLchar err_info[1024] = {0};
     int err_len = 0;
 
     // Shader source that draws a textures quad
@@ -226,10 +216,10 @@ void gl_setup_scene()
 }
 
 
-void gl_draw_scene(GLuint texture)
+static void gl_draw_scene(GLuint texture)
 {
     // clear
-    glClearColor(0.0f, 0.1f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.3f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // draw quad
@@ -240,7 +230,7 @@ void gl_draw_scene(GLuint texture)
 }
 
 
-int connect_to_uds(const char *path)
+static int connect_to_uds(const char *path)
 {
     struct sockaddr_un addr = {0};
 
@@ -264,7 +254,7 @@ int connect_to_uds(const char *path)
 }
 
 
-uint8_t *open_xvfb_shm(const char *path, uint16_t *width, uint16_t *height)
+static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
 {
     int fd = 0;
     XWDFileHeader *header = NULL;
@@ -283,9 +273,9 @@ uint8_t *open_xvfb_shm(const char *path, uint16_t *width, uint16_t *height)
     }
 
     pixels_offset = ntohl(header->header_size) + (ntohl(header->ncolors)) * sizeof(XWDColor);
-    *width = ntohl(header->window_width);
-    *height = ntohl(header->window_height);
-    size = (*width) * (*height) * sizeof(uint32_t) + pixels_offset;
+    self->width = ntohl(header->window_width);
+    self->height = ntohl(header->window_height);
+    size = self->width * self->height * sizeof(uint32_t) + pixels_offset;
 
     munmap(header, 4096);
     header = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
@@ -295,38 +285,66 @@ uint8_t *open_xvfb_shm(const char *path, uint16_t *width, uint16_t *height)
     }
 
     printf("Xvfb width: %d height: %d pixel data offset: %d\n",
-           *width, *height, pixels_offset);
+           self->width, self->height, pixels_offset);
 
     return ((uint8_t *)header + pixels_offset);
 }
 
-void draw_loop(uint8_t *pixel_data, uint16_t width, uint16_t height, int damage_fd)
+
+bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir)
+{
+    char path[1024] = {0};
+
+    snprintf(path, sizeof(path), "%s/Xvfb_screen0", dir);
+    self->pixel_data = open_xvfb_shm(self, path);
+
+    snprintf(path, sizeof(path), "%s/Xdamage", dir);
+    self->damage_fd = connect_to_uds(path);
+
+    snprintf(path, sizeof(path), "%s/Xtest", dir);
+    self->xtest_fd = connect_to_uds(path);
+
+    self->resize_fd = eventfd(0, 0);
+
+    if (!self->pixel_data || self->damage_fd < 0 ||
+        self->xtest_fd < 0 || self->resize_fd < 0) {
+        return false;
+    }
+
+    printf("pixel_data ptr: %p, damage fd: %d, xtest fd: %d\n",
+           self->pixel_data, self->damage_fd, self->xtest_fd);
+    return true;
+}
+
+
+static void draw_loop(EGLXvfb_t *self)
 {
     GLuint texture = 0;
     damage_area_t damage_area = {0};
     uint64_t dummy = 0;
     struct pollfd pfds[] = {
-        {.fd=damage_fd, .events=POLLIN},
-        {.fd=resize_fd, .events=POLLIN}
+        {.fd=self->damage_fd, .events=POLLIN},
+        {.fd=self->resize_fd, .events=POLLIN}
     };
 
     gl_setup_scene();
 
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, self->width, self->height, 0,
                  GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
-                    GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, self->width, self->height,
+                    GL_RGBA, GL_UNSIGNED_BYTE, self->pixel_data);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    printf("GL error after texture setup: %d\n", glGetError());
 
     while (true) {
         gl_draw_scene(texture);
         /* get rendered buffer to the screen */
-        eglSwapBuffers(egl_display, egl_surface);
+        eglSwapBuffers(self->egl_display, self->egl_surface);
 
-        write(damage_fd, &((uint8_t[]){0}), sizeof(uint8_t));
+        write(self->damage_fd, &((uint8_t[]){0}), sizeof(uint8_t));
 
         /* check for xdamage or local window resize events */
         if (poll(pfds, sizeof(pfds) / sizeof(pfds[0]), -1) < 1) {
@@ -334,8 +352,8 @@ void draw_loop(uint8_t *pixel_data, uint16_t width, uint16_t height, int damage_
             break;
         }
         if (pfds[1].revents & POLLIN) {
-            read(resize_fd, &dummy, sizeof(dummy));
-            glViewport(0, 0, view_width, view_height);
+            read(self->resize_fd, &dummy, sizeof(dummy));
+            glViewport(0, 0, self->view_width, self->view_height);
             continue;
 
         } else if (!(pfds[0].revents & POLLIN)) {
@@ -343,136 +361,46 @@ void draw_loop(uint8_t *pixel_data, uint16_t width, uint16_t height, int damage_
             break;
         }
 
-        read(damage_fd, &damage_area, sizeof(damage_area));
+        read(self->damage_fd, &damage_area, sizeof(damage_area));
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
-            0, damage_area.y, width, damage_area.height,
+            0, damage_area.y, self->width, damage_area.height,
             GL_RGBA, GL_UNSIGNED_BYTE,
-            pixel_data + (width * sizeof(uint32_t) * damage_area.y)
+            self->pixel_data + (self->width * sizeof(uint32_t) * damage_area.y)
         );
     }
 }
 
 
-uint16_t normalize_width(uint16_t x)
+uint16_t EGLXvfb_normalize_x(EGLXvfb_t *self, uint16_t x)
 {
-    return (uint16_t)((float)display_width * ((float)x / (float)view_width));
-}
-
-uint16_t normalize_height(uint16_t y)
-{
-    return (uint16_t)((float)display_height * ((float)y / (float)view_height));
+    return (uint16_t)((float)self->width * ((float)x / (float)self->view_width));
 }
 
 
-void *window_event_loop(void *arg)
+uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y)
 {
-    Display *xdisplay = (Display *)arg;
-    XEvent event = {0};
-    xtest_event_t out_event = {0};
-
-    printf("Window event receiver thread running...\n");
-
-    while (true)
-    {
-        XNextEvent(xdisplay, &event);
-        memset(&out_event, 0, sizeof(out_event));
-
-        switch (event.type)
-        {
-            case MotionNotify:
-                out_event.type = XTEST_EVENT_MOUSE;
-                out_event.params[0] = normalize_width(((XMotionEvent*)&event)->x);
-                out_event.params[1] = normalize_height(((XMotionEvent*)&event)->y);
-                break;
-
-            case ButtonPress:
-                out_event.type = XTEST_EVENT_BUTTON_PRESS;
-                out_event.params[0] = ((XButtonEvent*)&event)->button;
-                break;
-
-            case ButtonRelease:
-                out_event.type = XTEST_EVENT_BUTTON_RELEASE;
-                out_event.params[0] = ((XButtonEvent*)&event)->button;
-                break;
-
-            case KeyPress:
-                out_event.type = XTEST_EVENT_KEY_PRESS;
-                out_event.params[0] = ((XKeyEvent*)&event)->keycode;
-                break;
-
-            case KeyRelease:
-                out_event.type = XTEST_EVENT_KEY_RELEASE;
-                out_event.params[0] = ((XKeyEvent*)&event)->keycode;
-                break;
-
-            case ConfigureNotify:
-                view_width = ((XConfigureEvent*)&event)->width;
-                view_height = ((XConfigureEvent*)&event)->height;
-                write(resize_fd, &((uint64_t[1]){1}), sizeof(uint64_t));
-                break;
-
-            default:
-                break;
-        }
-
-        if (out_event.type != 0) {
-            write(xtest_fd, &out_event, sizeof(out_event));
-        }
-    }
+    return (uint16_t)((float)self->height * ((float)y / (float)self->view_height));
 }
 
 
-int main()
+void EGLXvfb_set_native_window(EGLXvfb_t *self,
+                               EGLNativeDisplayType display,
+                               EGLNativeWindowType win)
 {
-    Window root = {0};
-    Window win = {0};
-    XSetWindowAttributes swa = {0};
-    Display *xdisplay = NULL;
-    uint8_t *pixel_data = NULL;
-    uint16_t width = 0;
-    uint16_t height = 0;
-    int damage_fd = -1;
-    pthread_t event_thread = 0;
+    self->display = display;
+    self->win = win;
+}
 
-    pixel_data = open_xvfb_shm("/tmp/kaka/Xvfb_screen0", &width, &height);
-    damage_fd = connect_to_uds("/tmp/kaka/Xdamage");
-    xtest_fd = connect_to_uds("/tmp/kaka/Xtest");
-    resize_fd = eventfd(0, 0);
+void *EGLXvfb_gl_thread(void *arg)
+{
+    EGLXvfb_t *self = (EGLXvfb_t *)arg;
 
-    if (!pixel_data || damage_fd < 0 || xtest_fd < 0 || resize_fd < 0) {
-        return 1;
+    if (!init_egl(self)) {
+        printf("init_egl fail\n");
+        return NULL;
     }
 
-    printf("pixel_data ptr: %p, damage fd: %d\n", pixel_data, damage_fd);
-
-    xdisplay = XOpenDisplay(NULL);
-    if (xdisplay == NULL) {
-        printf("Error opening X display\n");
-        return 0;
-    }
-    root = DefaultRootWindow(xdisplay);
-
-    swa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask |
-                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
-    win = XCreateWindow(
-        xdisplay, root, 0, 0, width, height, 0,
-        CopyFromParent, InputOutput, CopyFromParent, CWEventMask, &swa
-    );
-    // TODO: XAllocSizeHints for window aspect ratio
-
-    XMapWindow(xdisplay, win);
-    XStoreName(xdisplay, win, "EGL");
-
-    view_width = display_width = width;
-    view_height = display_height = height;
-    pthread_create(&event_thread, NULL, &window_event_loop, (void *)xdisplay);
-
-    if (!init_egl(xdisplay, win) || !egl_get_extension_funcs()) {
-        return 1;
-    }
-
-    draw_loop(pixel_data, width, height, damage_fd);
-
-    return 0;
+    draw_loop(self);
+    return NULL;
 }
