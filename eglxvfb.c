@@ -364,25 +364,27 @@ static void draw_loop(EGLXvfb_t *self)
         }
 
         read(self->damage_fd, &damage_area, sizeof(damage_area));
+
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
-            0, damage_area.y, self->width, damage_area.height,
+            0, damage_area.y, self->width, damage_area.end_y - damage_area.y,
             GL_RGBA, GL_UNSIGNED_BYTE,
-            self->pixel_data + (self->width * sizeof(uint32_t) * damage_area.y)
+            self->pixel_data + (self->width * damage_area.y * sizeof(uint32_t))
         );
+
     }
 }
 
 
 uint16_t EGLXvfb_normalize_x(EGLXvfb_t *self, uint16_t x)
 {
-    return (uint16_t)((float)self->width * ((float)x / (float)self->view_width));
+    return (uint16_t)(self->width * ((float)(x) / self->view_width));
 }
 
 
 uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y)
 {
-    return (uint16_t)((float)self->height * ((float)y / (float)self->view_height));
+    return (uint16_t)(self->height * ((float)(y) / self->view_height));
 }
 
 
