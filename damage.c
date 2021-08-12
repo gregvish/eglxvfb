@@ -34,8 +34,8 @@ static void *server_thread(void *arg)
             fprintf(stderr, "read fail\n");
             return NULL;
         }
-        read(state->damage_event_fd, &dummy, sizeof(dummy));
 
+        read(state->damage_event_fd, &dummy, sizeof(dummy));
         pthread_mutex_lock(&state->lock);
 
         if (sizeof(state->damage_area) !=
@@ -92,16 +92,18 @@ int main(void)
         return 1;
     }
 
+    region = XFixesCreateRegion(display, NULL, 0);
+
     while (true) {
         XNextEvent(display, &event);
 
         if (event.type == damage_event) {
             dev = (XDamageNotifyEvent *)&event;
 
-            region = XFixesCreateRegion(display, NULL, 0);
             XDamageSubtract(display, dev->damage, None, region);
             area_count = 0;
             area = XFixesFetchRegion(display, region, &area_count);
+            XFixesSetRegion(display, region, NULL, 0);
 
             if (area) {
                 pthread_mutex_lock(&state.lock);
@@ -120,15 +122,15 @@ int main(void)
                 }
 
                 write(state.damage_event_fd, &((uint64_t[1]){1}), sizeof(uint64_t));
-                pthread_mutex_unlock(&state.lock);
 
+                pthread_mutex_unlock(&state.lock);
                 XFree(area);
             }
-
-            XFixesDestroyRegion(display, region);
         }
     }
 
+    XFixesDestroyRegion(display, region);
     XCloseDisplay(display);
+
     return 0;
 }
