@@ -367,11 +367,10 @@ static void draw_loop(EGLXvfb_t *self)
 
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
-            0, damage_area.y, self->width, damage_area.end_y - damage_area.y,
+            0, 0, self->width, self->height,
             GL_RGBA, GL_UNSIGNED_BYTE,
-            self->pixel_data + (self->width * damage_area.y * sizeof(uint32_t))
+            self->pixel_data
         );
-
     }
 }
 

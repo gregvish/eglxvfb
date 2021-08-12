@@ -4,8 +4,7 @@
 #include <stdint.h>
 
 typedef struct __attribute__((packed)) {
-    uint16_t y;
-    uint16_t end_y;
+    bool dummy;
 } damage_area_t;
 
 
