@@ -40,6 +40,7 @@ $PREFIX-ar rcs ./build/libnative_app_glue.a ./build/native_app_glue.o
 echo "Compiling our native activity"
 $CC -Werror -Wall -pedantic -std=gnu11 -fPIC -shared \
     -I $GLUE -L ./build \
+    -DANDROID_BUILD \
     eglxvfb.c \
     android_eglxvfb.c \
     -o ./build/lib/$LIB_ARCH/libandroideglxvfb.so \

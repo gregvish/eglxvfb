@@ -3,13 +3,15 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <pthread.h>
 
-#include <android/log.h>
+#include <EGL/egl.h>
+
 #include <android_native_app_glue.h>
 
-
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "AndroidEGLXvfb", __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "AndroidEGLXvfb", __VA_ARGS__))
+#include "xtest_event.h"
+#include "eglxvfb.h"
+#include "logging.h"
 
 
 struct saved_state {
@@ -26,6 +28,36 @@ struct engine {
     struct saved_state state;
 };
 
+
+static int engine_start_app(struct engine* engine)
+{
+    //pthread_t gl_thread = 0;
+    EGLXvfb_t egl_xvfb = {0};
+
+    LOGI("engine_start_app running");
+
+    if (!EGLXvfb_connect(&egl_xvfb, "/data/data/com.androideglxvfb/files/")) {
+        LOGW("EGLXvfb_connect fail");
+        return 1;
+    }
+
+    //if (pthread_create(
+    //        &gl_thread,
+    //        NULL,
+    //        EGLXvfb_gl_thread,
+    //        &(EGLXvfb_thread_params_t){
+    //            .self=&egl_xvfb, .display=EGL_DEFAULT_DISPLAY, .win=engine->app->window
+    //        }
+    //    )) {
+    //    LOGW("pthread_create fail");
+    //    return 1;
+    //}
+    EGLXvfb_gl_thread(&(EGLXvfb_thread_params_t){
+        .self=&egl_xvfb, .display=EGL_DEFAULT_DISPLAY, .win=engine->app->window
+    });
+
+    return 0;
+}
 
 static int engine_init_display(struct engine* engine)
 {
@@ -78,7 +110,7 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd)
             break;
 
         case APP_CMD_GAINED_FOCUS:
-            // TODO start doing stuff
+            engine_start_app(engine);
             break;
 
         case APP_CMD_LOST_FOCUS:

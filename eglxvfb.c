@@ -19,6 +19,7 @@
 
 #include "XWDFile.h"
 #include "damage_area.h"
+#include "logging.h"
 #include "eglxvfb.h"
 
 
@@ -66,19 +67,19 @@ static bool init_egl(EGLXvfb_t *self,
 
     self->egl_display = eglGetDisplay(display);
     if (self->egl_display == EGL_NO_DISPLAY) {
-        printf("Error getting EGL display\n");
+        LOGW("Error getting EGL display\n");
         return false;
     }
 
     if (!eglInitialize(self->egl_display, &major, &minor)) {
-        printf("Error initializing EGL\n");
+        LOGW("Error initializing EGL\n");
         return false;
     }
 
-    printf("EGL major: %d, minor %d\n", major, minor);
+    LOGI("EGL major: %d, minor %d\n", major, minor);
 
     if (!eglChooseConfig(self->egl_display, attr, &self->egl_conf, 1, &num_config)) {
-        printf("Failed to choose config (eglError: %x)\n", eglGetError());
+        LOGW("Failed to choose config (eglError: %x)\n", eglGetError());
         return false;
     }
 
@@ -90,7 +91,7 @@ static bool init_egl(EGLXvfb_t *self,
         self->egl_display, self->egl_conf, win, NULL
     );
     if (self->egl_surface == EGL_NO_SURFACE) {
-        printf("CreateWindowSurface, EGL eglError: %d\n", eglGetError());
+        LOGW("CreateWindowSurface, EGL eglError: %d\n", eglGetError());
         return false;
     }
 
@@ -98,7 +99,7 @@ static bool init_egl(EGLXvfb_t *self,
         self->egl_display, self->egl_conf, EGL_NO_CONTEXT, ctxattr
     );
     if (self->egl_context == EGL_NO_CONTEXT) {
-        printf("CreateContext, EGL eglError: %d\n", eglGetError());
+        LOGW("CreateContext, EGL eglError: %d\n", eglGetError());
         return false;
     }
 
@@ -151,7 +152,7 @@ static void gl_setup_scene()
     glCompileShader(vertex_shader);
 
     glGetShaderInfoLog(vertex_shader, sizeof(err_info), &err_len, err_info);
-    printf("glCompileShader (vertex): %s\n", err_info);
+    LOGI("glCompileShader (vertex): %s\n", err_info);
 
     // fragment shader
     int fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -159,7 +160,7 @@ static void gl_setup_scene()
     glCompileShader(fragment_shader);
 
     glGetShaderInfoLog(fragment_shader, sizeof(err_info), &err_len, err_info);
-    printf("glCompileShader (fragment): %s\n", err_info);
+    LOGI("glCompileShader (fragment): %s\n", err_info);
 
     // link shaders
     int shader_program = glCreateProgram();
@@ -168,7 +169,7 @@ static void gl_setup_scene()
     glLinkProgram(shader_program);
 
     glGetProgramInfoLog(shader_program, sizeof(err_info), &err_len, err_info);
-    printf("glLinkProgram: %s\n", err_info);
+    LOGI("glLinkProgram: %s\n", err_info);
 
     // delete shaders
     glDeleteShader(vertex_shader);
@@ -213,7 +214,7 @@ static void gl_setup_scene()
     glUseProgram(shader_program);
     glBindVertexArrayOES(VAO);
 
-    printf("GL error status (after glUseProgram): %d\n", glGetError());
+    LOGI("GL error status (after glUseProgram): %d\n", glGetError());
 }
 
 
@@ -237,7 +238,7 @@ static int connect_to_uds(const char *path)
 
     int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sfd < 0) {
-        printf("socket fail\n");
+        LOGW("socket fail\n");
         return -1;
     }
 
@@ -247,7 +248,7 @@ static int connect_to_uds(const char *path)
 
     if (connect(sfd, (struct sockaddr *) &addr,
                 sizeof(struct sockaddr_un)) == -1) {
-        printf("connect fail to %s\n", path);
+        LOGW("connect fail to %s\n", path);
         return -1;
     }
 
@@ -264,12 +265,12 @@ static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
 
     fd = open(path, O_RDONLY);
     if (fd < 0) {
-        printf("Xvfb shm open fail\n");
+        LOGW("Xvfb shm open fail\n");
         return NULL;
     }
     header = mmap(NULL, 4096, PROT_READ, MAP_SHARED, fd, 0);
     if (!header) {
-        printf("mmap fail\n");
+        LOGW("mmap fail\n");
         return NULL;
     }
 
@@ -281,11 +282,11 @@ static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
     munmap(header, 4096);
     header = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
     if (!header) {
-        printf("re-mmap fail\n");
+        LOGW("re-mmap fail\n");
         return NULL;
     }
 
-    printf("Xvfb width: %d height: %d pixel data offset: %d\n",
+    LOGI("Xvfb width: %d height: %d pixel data offset: %d\n",
            self->width, self->height, pixels_offset);
 
     return ((uint8_t *)header + pixels_offset);
@@ -312,7 +313,7 @@ bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir)
         return false;
     }
 
-    printf("pixel_data ptr: %p, damage fd: %d, xtest fd: %d\n",
+    LOGI("pixel_data ptr: %p, damage fd: %d, xtest fd: %d\n",
            (void *)self->pixel_data, self->damage_fd, self->xtest_fd);
     return true;
 }
@@ -338,7 +339,7 @@ static void draw_loop(EGLXvfb_t *self)
                     GL_RGBA, GL_UNSIGNED_BYTE, self->pixel_data);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    printf("GL error after texture setup: %d\n", glGetError());
+    LOGI("GL error after texture setup: %d\n", glGetError());
 
     while (true) {
         gl_draw_scene(texture);
@@ -349,7 +350,7 @@ static void draw_loop(EGLXvfb_t *self)
 
         /* check for xdamage or local window resize events */
         if (poll(pfds, sizeof(pfds) / sizeof(pfds[0]), -1) < 1) {
-            printf("poll error\n");
+            LOGW("poll error\n");
             break;
         }
         if (pfds[1].revents & POLLIN) {
@@ -358,7 +359,7 @@ static void draw_loop(EGLXvfb_t *self)
             continue;
 
         } else if (!(pfds[0].revents & POLLIN)) {
-            printf("bad poll result\n");
+            LOGW("bad poll result\n");
             break;
         }
 
@@ -391,7 +392,7 @@ void *EGLXvfb_gl_thread(void *arg)
     EGLXvfb_thread_params_t *params = (EGLXvfb_thread_params_t *)arg;
 
     if (!init_egl(params->self, params->display, params->win)) {
-        printf("init_egl fail\n");
+        LOGW("init_egl fail\n");
         return NULL;
     }
 
