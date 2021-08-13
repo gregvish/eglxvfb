@@ -276,8 +276,8 @@ static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
     }
 
     pixels_offset = ntohl(header->header_size) + (ntohl(header->ncolors)) * sizeof(XWDColor);
-    self->width = ntohl(header->window_width);
-    self->height = ntohl(header->window_height);
+    self->view_width = self->width = ntohl(header->window_width);
+    self->view_height = self->height = ntohl(header->window_height);
     size = self->width * self->height * sizeof(uint32_t) + pixels_offset;
 
     munmap(header, 4096);

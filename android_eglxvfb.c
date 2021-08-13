@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -15,14 +16,12 @@
 
 
 struct saved_state {
-    int32_t x;
-    int32_t y;
+    int dummy;
 };
 
 struct engine {
     struct android_app* app;
     struct saved_state state;
-    int animating;
     pthread_t gl_thread;
     EGLXvfb_t egl_xvfb;
 };
@@ -57,21 +56,93 @@ static int engine_init_display(struct engine* engine)
 
 static void engine_term_display(struct engine* engine)
 {
-    engine->animating = 0;
+}
+
+static int32_t xlate_ButtonState(int32_t state)
+{
+    switch (state) {
+        case 0:
+        case 1:
+            return 1;
+        case 2:
+            return 3;
+        case 4:
+            return 2;
+    }
+    return 0;
+}
+
+static void xlate_MotionEvent(EGLXvfb_t *egl_xvfb, AInputEvent *event,
+                              xtest_event_t *out_event)
+{
+    out_event->type = XTEST_EVENT_MOUSE;
+    out_event->params[0] = EGLXvfb_normalize_x(egl_xvfb, AMotionEvent_getX(event, 0));
+    out_event->params[1] = EGLXvfb_normalize_y(egl_xvfb, AMotionEvent_getY(event, 0));
 }
 
 static int32_t engine_handle_input(struct android_app* app, AInputEvent* event)
 {
     struct engine* engine = (struct engine*)app->userData;
+    int32_t key_val = 0;
+    int32_t eventAction = 0;
+    xtest_event_t out_event = {0};
+    xtest_event_t out_event_sec = {0};
 
     if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
-        engine->animating = 1;
-        engine->state.x = AMotionEvent_getX(event, 0);
-        engine->state.y = AMotionEvent_getY(event, 0);
-        return 1;
+        eventAction = AMotionEvent_getAction(event);
+        switch (eventAction) {
+            case AMOTION_EVENT_ACTION_UP:
+                xlate_MotionEvent(&engine->egl_xvfb, event, &out_event);
+                out_event_sec.type = XTEST_EVENT_BUTTON_RELEASE;
+                out_event_sec.params[0] =
+                    xlate_ButtonState(AMotionEvent_getButtonState(event));
+                break;
+
+            case AMOTION_EVENT_ACTION_DOWN:
+                xlate_MotionEvent(&engine->egl_xvfb, event, &out_event);
+                out_event_sec.type = XTEST_EVENT_BUTTON_PRESS;
+                out_event_sec.params[0] =
+                    xlate_ButtonState(AMotionEvent_getButtonState(event));
+                break;
+
+            case AMOTION_EVENT_ACTION_SCROLL:
+                out_event.type = XTEST_EVENT_BUTTON_PRESS;
+                out_event_sec.type = XTEST_EVENT_BUTTON_RELEASE;
+                if (AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_VSCROLL, 0) > 0) {
+                    out_event_sec.params[0] = out_event.params[0] = 4;
+                } else {
+                    out_event_sec.params[0] = out_event.params[0] = 5;
+                }
+                break;
+
+            default:
+                xlate_MotionEvent(&engine->egl_xvfb, event, &out_event);
+                break;
+        }
+
+    } else if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY) {
+        key_val = AKeyEvent_getKeyCode(event);
+        if(AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_UP) {
+            out_event.type = XTEST_EVENT_KEY_RELEASE;
+            out_event.params[0] = key_val;
+
+        } else if(AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_DOWN) {
+            out_event.type = XTEST_EVENT_KEY_PRESS;
+            out_event.params[0] = key_val;
+        }
+
+    } else {
+        return 0;
     }
 
-    return 0;
+    if (out_event.type != 0) {
+        write(engine->egl_xvfb.xtest_fd, &out_event, sizeof(out_event));
+    }
+    if (out_event_sec.type != 0) {
+        write(engine->egl_xvfb.xtest_fd, &out_event_sec, sizeof(out_event_sec));
+    }
+
+    return 1;
 }
 
 static void engine_handle_cmd(struct android_app* app, int32_t cmd)
@@ -96,13 +167,11 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd)
             break;
 
         case APP_CMD_GAINED_FOCUS:
-            engine->animating = 1;
             start_egl_thread(engine);
             break;
 
         case APP_CMD_LOST_FOCUS:
             EGLXvfb_stop(&engine->egl_xvfb);
-            engine->animating = 0;
             break;
     }
 }
@@ -127,10 +196,7 @@ void android_main(struct android_app* state)
         int events;
         struct android_poll_source* source;
 
-        // If not animating, we will block forever waiting for events.
-        // If animating, we loop until all events are read, then continue
-        // to draw the next frame of animation.
-        while ((ident=ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events,
+        while ((ident=ALooper_pollAll(-1, NULL, &events,
                                       (void**)&source)) >= 0) {
 
             if (source != NULL) {
