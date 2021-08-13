@@ -17,8 +17,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include <X11/XWDFile.h>
-
+#include "XWDFile.h"
 #include "damage_area.h"
 #include "eglxvfb.h"
 
@@ -314,7 +313,7 @@ bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir)
     }
 
     printf("pixel_data ptr: %p, damage fd: %d, xtest fd: %d\n",
-           self->pixel_data, self->damage_fd, self->xtest_fd);
+           (void *)self->pixel_data, self->damage_fd, self->xtest_fd);
     return true;
 }
 
