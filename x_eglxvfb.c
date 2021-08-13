@@ -107,12 +107,12 @@ int main(int argc, const char *argv[])
     XMapWindow(xdisplay, win);
     XStoreName(xdisplay, win, "EGL");
 
-    if (pthread_create(
-            &gl_thread,
-            NULL,
-            EGLXvfb_gl_thread,
-            &(EGLXvfb_thread_params_t){.self=&egl_xvfb, .display=xdisplay, .win=win}
-        )) {
+    if (!EGLXvfb_init_egl(&egl_xvfb, xdisplay, win)) {
+        printf("init_egl fail\n");
+        return 1;
+    }
+
+    if (pthread_create(&gl_thread, NULL, EGLXvfb_gl_thread, &egl_xvfb)) {
         printf("pthread_create fail\n");
         return 1;
     }

@@ -21,51 +21,38 @@ struct saved_state {
 
 struct engine {
     struct android_app* app;
-
-    int animating;
-    int32_t width;
-    int32_t height;
     struct saved_state state;
+    int animating;
+    pthread_t gl_thread;
+    EGLXvfb_t egl_xvfb;
 };
 
 
-static int engine_start_app(struct engine* engine)
+static int start_egl_thread(struct engine* engine)
 {
-    //pthread_t gl_thread = 0;
-    EGLXvfb_t egl_xvfb = {0};
+    LOGI("start_egl_thread running");
 
-    LOGI("engine_start_app running");
-
-    if (!EGLXvfb_connect(&egl_xvfb, "/data/data/com.androideglxvfb/files/")) {
-        LOGW("EGLXvfb_connect fail");
+    if (pthread_create(&engine->gl_thread, NULL, EGLXvfb_gl_thread, &engine->egl_xvfb)) {
+        LOGW("pthread_create fail");
         return 1;
     }
-
-    //if (pthread_create(
-    //        &gl_thread,
-    //        NULL,
-    //        EGLXvfb_gl_thread,
-    //        &(EGLXvfb_thread_params_t){
-    //            .self=&egl_xvfb, .display=EGL_DEFAULT_DISPLAY, .win=engine->app->window
-    //        }
-    //    )) {
-    //    LOGW("pthread_create fail");
-    //    return 1;
-    //}
-    EGLXvfb_gl_thread(&(EGLXvfb_thread_params_t){
-        .self=&egl_xvfb, .display=EGL_DEFAULT_DISPLAY, .win=engine->app->window
-    });
 
     return 0;
 }
 
 static int engine_init_display(struct engine* engine)
 {
-    return 0;
-}
+    if (!EGLXvfb_connect(&engine->egl_xvfb, "/data/data/com.androideglxvfb/files/")) {
+        LOGW("EGLXvfb_connect fail");
+        return 1;
+    }
 
-static void engine_draw_frame(struct engine* engine)
-{
+    if (!EGLXvfb_init_egl(&engine->egl_xvfb, EGL_DEFAULT_DISPLAY, engine->app->window)) {
+        LOGW("init_egl fail\n");
+        return 1;
+    }
+
+    return 0;
 }
 
 static void engine_term_display(struct engine* engine)
@@ -101,7 +88,6 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd)
         case APP_CMD_INIT_WINDOW:
             if (engine->app->window != NULL) {
                 engine_init_display(engine);
-                engine_draw_frame(engine);
             }
             break;
 
@@ -110,14 +96,13 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd)
             break;
 
         case APP_CMD_GAINED_FOCUS:
-            engine_start_app(engine);
+            engine->animating = 1;
+            start_egl_thread(engine);
             break;
 
         case APP_CMD_LOST_FOCUS:
-            // TODO stop doing stuff
-            // Also stop animating.
+            EGLXvfb_stop(&engine->egl_xvfb);
             engine->animating = 0;
-            engine_draw_frame(engine);
             break;
     }
 }
@@ -157,10 +142,6 @@ void android_main(struct android_app* state)
                 engine_term_display(&engine);
                 return;
             }
-        }
-
-        if (engine.animating) {
-            engine_draw_frame(&engine);
         }
     }
 }

@@ -43,9 +43,9 @@ static void egl_get_extension_funcs(void)
 }
 
 
-static bool init_egl(EGLXvfb_t *self,
-                     EGLNativeDisplayType display,
-                     EGLNativeWindowType win)
+bool EGLXvfb_init_egl(EGLXvfb_t *self,
+                      EGLNativeDisplayType display,
+                      EGLNativeWindowType win)
 {
     EGLint attr[] = {
         EGL_SURFACE_TYPE,           EGL_WINDOW_BIT,
@@ -107,6 +107,7 @@ static bool init_egl(EGLXvfb_t *self,
         self->egl_display, self->egl_surface, self->egl_surface, self->egl_context
     );
     egl_get_extension_funcs();
+    eglMakeCurrent(self->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     return true;
 }
@@ -341,7 +342,7 @@ static void draw_loop(EGLXvfb_t *self)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     LOGI("GL error after texture setup: %d\n", glGetError());
 
-    while (true) {
+    while (self->running) {
         gl_draw_scene(texture);
         /* get rendered buffer to the screen */
         eglSwapBuffers(self->egl_display, self->egl_surface);
@@ -372,6 +373,8 @@ static void draw_loop(EGLXvfb_t *self)
             self->pixel_data
         );
     }
+
+    LOGI("GL draw loop ended: %d\n", glGetError());
 }
 
 
@@ -389,13 +392,33 @@ uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y)
 
 void *EGLXvfb_gl_thread(void *arg)
 {
-    EGLXvfb_thread_params_t *params = (EGLXvfb_thread_params_t *)arg;
+    EGLXvfb_t *self = (EGLXvfb_t *)arg;
+    EGLContext child_egl_ctx = 0;
+    EGLint ctxattr[] = {
+       EGL_CONTEXT_CLIENT_VERSION, 2,
+       EGL_NONE
+    };
 
-    if (!init_egl(params->self, params->display, params->win)) {
-        LOGW("init_egl fail\n");
+    child_egl_ctx = eglCreateContext(
+        self->egl_display, self->egl_conf, self->egl_context, ctxattr
+    );
+    if (child_egl_ctx == EGL_NO_CONTEXT) {
+        LOGW("CreateContext (child context), EGL eglError: %d\n", eglGetError());
         return NULL;
     }
 
-    draw_loop(params->self);
+    eglMakeCurrent(
+        self->egl_display, self->egl_surface, self->egl_surface, child_egl_ctx
+    );
+
+    self->running = true;
+    draw_loop(self);
+
     return NULL;
+}
+
+void EGLXvfb_stop(EGLXvfb_t *self)
+{
+    self->running = false;
+    write(self->resize_fd, &((uint64_t[1]){1}), sizeof(uint64_t));
 }
