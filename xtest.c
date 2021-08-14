@@ -17,6 +17,7 @@ int main(void)
 {
     Display *display = NULL;
     xtest_event_t event = {0};
+    KeyCode keycode = 0;
 
     display = XOpenDisplay(NULL);
     if (!display) {
@@ -46,11 +47,13 @@ int main(void)
                 break;
 
             case XTEST_EVENT_KEY_PRESS:
-                XTestFakeKeyEvent(display, event.params[0], true, CurrentTime);
+                keycode = XKeysymToKeycode(display, event.params[0]);
+                XTestFakeKeyEvent(display, keycode, true, CurrentTime);
                 break;
 
             case XTEST_EVENT_KEY_RELEASE:
-                XTestFakeKeyEvent(display, event.params[0], false, CurrentTime);
+                keycode = XKeysymToKeycode(display, event.params[0]);
+                XTestFakeKeyEvent(display, keycode, false, CurrentTime);
                 break;
 
             default:

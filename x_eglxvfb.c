@@ -46,12 +46,12 @@ void window_event_loop(Display *xdisplay, EGLXvfb_t *egl_xvfb)
 
             case KeyPress:
                 out_event.type = XTEST_EVENT_KEY_PRESS;
-                out_event.params[0] = ((XKeyEvent*)&event)->keycode;
+                out_event.params[0] = XLookupKeysym(((XKeyEvent*)&event), 0);
                 break;
 
             case KeyRelease:
                 out_event.type = XTEST_EVENT_KEY_RELEASE;
-                out_event.params[0] = ((XKeyEvent*)&event)->keycode;
+                out_event.params[0] = XLookupKeysym(((XKeyEvent*)&event), 0);
                 break;
 
             case ConfigureNotify:
