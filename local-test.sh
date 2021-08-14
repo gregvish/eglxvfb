@@ -14,7 +14,7 @@ sleep 1
 
 DISPLAY=$XVFB_DISPLAY socat unix-l:$XVFB_DIR/Xdamage,fork exec:./Xdamage &
 DISPLAY=$XVFB_DISPLAY socat unix-l:$XVFB_DIR/Xtest,fork exec:./Xtest &
-DISPLAY=$XVFB_DISPLAY vglrun icewm &
+DISPLAY=$XVFB_DISPLAY icewm &
 sleep 1
 
 DISPLAY=:0 ./XEGLXvfb $XVFB_DIR

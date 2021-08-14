@@ -125,11 +125,11 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event)
         key_val = AKeyEvent_getKeyCode(event);
         if (AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_UP) {
             out_event.type = XTEST_EVENT_KEY_RELEASE;
-            out_event.params[0] = android_to_x_keycode_xlate[key_val];
+            out_event.params[0] = android_to_x_keysym_xlate[key_val];
 
         } else if(AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_DOWN) {
             out_event.type = XTEST_EVENT_KEY_PRESS;
-            out_event.params[0] = android_to_x_keycode_xlate[key_val];
+            out_event.params[0] = android_to_x_keysym_xlate[key_val];
         }
 
     } else {
