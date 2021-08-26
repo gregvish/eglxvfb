@@ -13,3 +13,5 @@ gcc -Werror -Wall -pedantic -o ./build/Xdamage damage.c \
 gcc -Werror -Wall -pedantic -o ./build/XEGLXvfb eglxvfb.c x_eglxvfb.c \
     -lGLESv2 -lEGL -lX11 -lpthread
 
+gcc -Werror -Wall -pedantic -shared -fPIC -o ./build/shm_shim.so shm_shim.c
+
