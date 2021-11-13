@@ -323,6 +323,7 @@ static void draw_loop(EGLXvfb_t *self)
 {
     GLuint texture = 0;
     uint64_t dummy = 0;
+    uint8_t dummy_buf[128] = {0};
     struct pollfd pfds[] = {
         {.fd=self->damage_fd, .events=POLLIN},
         {.fd=self->resize_fd, .events=POLLIN}
@@ -360,7 +361,7 @@ static void draw_loop(EGLXvfb_t *self)
             break;
         }
 
-        read(self->damage_fd, &dummy, sizeof(uint8_t));
+        read(self->damage_fd, &dummy_buf, sizeof(dummy_buf));
 
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
