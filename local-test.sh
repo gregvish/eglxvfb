@@ -17,7 +17,7 @@ DISPLAY=$XVFB_DISPLAY socat unix-l:$XVFB_DIR/Xdamage,fork exec:./Xdamage &
 DISPLAY=$XVFB_DISPLAY socat unix-l:$XVFB_DIR/Xtest,fork exec:./Xtest &
 sleep 1
 
-DISPLAY=$XVFB_DISPLAY i3 &
-DISPLAY=$XVFB_DISPLAY xterm &
+DISPLAY=$XVFB_DISPLAY TERMINAL=kitty i3 &
+DISPLAY=$XVFB_DISPLAY kitty &
 DISPLAY=:0 ./XEGLXvfb $XVFB_DIR
 

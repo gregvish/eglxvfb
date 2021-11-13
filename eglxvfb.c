@@ -18,7 +18,6 @@
 #include <EGL/eglext.h>
 
 #include "XWDFile.h"
-#include "damage_area.h"
 #include "logging.h"
 #include "eglxvfb.h"
 
@@ -323,7 +322,6 @@ bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir)
 static void draw_loop(EGLXvfb_t *self)
 {
     GLuint texture = 0;
-    damage_area_t damage_area = {0};
     uint64_t dummy = 0;
     struct pollfd pfds[] = {
         {.fd=self->damage_fd, .events=POLLIN},
@@ -347,8 +345,6 @@ static void draw_loop(EGLXvfb_t *self)
         /* get rendered buffer to the screen */
         eglSwapBuffers(self->egl_display, self->egl_surface);
 
-        write(self->damage_fd, &((uint8_t[]){0}), sizeof(uint8_t));
-
         /* check for xdamage or local window resize events */
         if (poll(pfds, sizeof(pfds) / sizeof(pfds[0]), -1) < 1) {
             LOGW("poll error\n");
@@ -364,7 +360,7 @@ static void draw_loop(EGLXvfb_t *self)
             break;
         }
 
-        read(self->damage_fd, &damage_area, sizeof(damage_area));
+        read(self->damage_fd, &dummy, sizeof(uint8_t));
 
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
