@@ -25,6 +25,7 @@ struct engine {
     struct saved_state state;
     pthread_t gl_thread;
     EGLXvfb_t egl_xvfb;
+    uint16_t last_mouse_button;
 };
 
 
@@ -48,7 +49,7 @@ static int engine_init_display(struct engine* engine)
     }
 
     if (!EGLXvfb_init_egl(&engine->egl_xvfb, EGL_DEFAULT_DISPLAY, engine->app->window)) {
-        LOGW("init_egl fail\n");
+        LOGW("init_egl fail");
         return 1;
     }
 
@@ -63,12 +64,14 @@ static int32_t xlate_ButtonState(int32_t state)
 {
     switch (state) {
         case 0:
-        case 1:
-            return 1;
-        case 2:
-            return 3;
-        case 4:
-            return 2;
+        case AMOTION_EVENT_BUTTON_PRIMARY:
+            return XTEST_BUTTON_LEFT;
+        case AMOTION_EVENT_BUTTON_SECONDARY:
+            return XTEST_BUTTON_RIGHT;
+        case AMOTION_EVENT_BUTTON_TERTIARY:
+            return XTEST_BUTTON_MIDDLE;
+        default:
+            LOGW("Bad ButtonState %d", state);
     }
     return 0;
 }
@@ -95,8 +98,7 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event)
             case AMOTION_EVENT_ACTION_UP:
                 xlate_MotionEvent(&engine->egl_xvfb, event, &out_event);
                 out_event_sec.type = XTEST_EVENT_BUTTON_RELEASE;
-                out_event_sec.params[0] =
-                    xlate_ButtonState(AMotionEvent_getButtonState(event));
+                out_event_sec.params[0] = engine->last_mouse_button;
                 break;
 
             case AMOTION_EVENT_ACTION_DOWN:
@@ -104,15 +106,16 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event)
                 out_event_sec.type = XTEST_EVENT_BUTTON_PRESS;
                 out_event_sec.params[0] =
                     xlate_ButtonState(AMotionEvent_getButtonState(event));
+                engine->last_mouse_button = out_event_sec.params[0];
                 break;
 
             case AMOTION_EVENT_ACTION_SCROLL:
                 out_event.type = XTEST_EVENT_BUTTON_PRESS;
                 out_event_sec.type = XTEST_EVENT_BUTTON_RELEASE;
                 if (AMotionEvent_getAxisValue(event, AMOTION_EVENT_AXIS_VSCROLL, 0) > 0) {
-                    out_event_sec.params[0] = out_event.params[0] = 4;
+                    out_event_sec.params[0] = out_event.params[0] = XTEST_BUTTON_SCROLL_UP;
                 } else {
-                    out_event_sec.params[0] = out_event.params[0] = 5;
+                    out_event_sec.params[0] = out_event.params[0] = XTEST_BUTTON_SCROLL_DOWN;
                 }
                 break;
 
