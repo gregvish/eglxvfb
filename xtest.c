@@ -4,16 +4,16 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 
 #include <X11/Xlib.h>
-#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
 
 #include "xtest_event.h"
 
 
-int main(void)
+int xtest_main(int fd)
 {
     Display *display = NULL;
     xtest_event_t event = {0};
@@ -21,14 +21,14 @@ int main(void)
 
     display = XOpenDisplay(NULL);
     if (!display) {
-        printf("XOpenDisplay fail.\n");
+        printf("XTest: XOpenDisplay fail.\n");
         return 1;
     }
 
     while (true) {
-        if (sizeof(event) != read(0, &event, sizeof(event))) {
-            fprintf(stderr, "bad read\n");
-            return 1;
+        if (sizeof(event) != recv(fd, &event, sizeof(event), 0)) {
+            fprintf(stderr, "XTest: bad read\n");
+            break;
         }
 
         switch (event.type) {
@@ -64,5 +64,8 @@ int main(void)
     }
 
     XCloseDisplay(display);
+    close(fd);
+    fprintf(stderr, "XTest loop done.\n");
+
     return 0;
 }

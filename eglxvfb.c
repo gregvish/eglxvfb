@@ -232,9 +232,10 @@ static void gl_draw_scene(GLuint texture)
 }
 
 
-static int connect_to_uds(const char *path)
+static int connect_to_abstract_uds(const char *path)
 {
     struct sockaddr_un addr = {0};
+    uint16_t addrlen = 0;
 
     int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sfd < 0) {
@@ -244,10 +245,12 @@ static int connect_to_uds(const char *path)
 
     memset(&addr, 0, sizeof(struct sockaddr_un));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path + 1, path, sizeof(addr.sun_path) - 2);
+    // Abstract namespace (first path byte is NULL, and addrlen must be shortened)
+    addr.sun_path[0] = 0;
+    addrlen = sizeof(addr) - (sizeof(addr.sun_path) - strlen(addr.sun_path + 1) - 1);
 
-    if (connect(sfd, (struct sockaddr *) &addr,
-                sizeof(struct sockaddr_un)) == -1) {
+    if (connect(sfd, (struct sockaddr *)&addr, addrlen) == -1) {
         LOGW("connect fail to %s\n", path);
         return -1;
     }
@@ -256,19 +259,55 @@ static int connect_to_uds(const char *path)
 }
 
 
-static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
+bool read_fd_from_uds(int sock, int *fd, void *data, size_t data_len)
 {
-    int fd = 0;
+    struct msghdr msg = {0};
+    struct iovec io = {.iov_base = data, .iov_len = data_len};
+    char c_buffer[256] = {0};
+    struct cmsghdr *cmsg = NULL;
+
+    msg.msg_iov = &io;
+    msg.msg_iovlen = 1;
+    msg.msg_control = c_buffer;
+    msg.msg_controllen = sizeof(c_buffer);
+
+    if (recvmsg(sock, &msg, 0) < 0) {
+        return false;
+    }
+
+    cmsg = CMSG_FIRSTHDR(&msg);
+    if (!cmsg) {
+        LOGW("No CMSG attached\n");
+        return false;
+    }
+
+    memmove(fd, CMSG_DATA(cmsg), sizeof(*fd));
+    return true;
+}
+
+
+static uint8_t *get_xvfb_shm_and_fds(EGLXvfb_t *self, const char *path,
+                                     int *xtest_fd_ptr, int *xdamage_fd_ptr)
+{
+    int sock_fd = -1;
     XWDFileHeader *header = NULL;
     uint16_t pixels_offset = 0;
-    uint32_t size = 0;
+    uint8_t dummy = 0;
 
-    fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        LOGW("Xvfb shm open fail\n");
+    sock_fd = connect_to_abstract_uds(path);
+    if (sock_fd < 0) {
+        LOGW("Xvfb UDS connect fail\n");
         return NULL;
     }
-    header = mmap(NULL, 4096, PROT_READ, MAP_SHARED, fd, 0);
+
+    if (!read_fd_from_uds(sock_fd, &self->shm_fd, &dummy, sizeof(dummy)) ||
+        !read_fd_from_uds(sock_fd, xtest_fd_ptr, &dummy, sizeof(dummy)) ||
+        !read_fd_from_uds(sock_fd, xdamage_fd_ptr, &dummy, sizeof(dummy))) {
+        LOGW("Xvfb read fds from UDS fail\n");
+        return NULL;
+    }
+
+    header = mmap(NULL, 4096, PROT_READ, MAP_SHARED, self->shm_fd, 0);
     if (!header) {
         LOGW("mmap fail\n");
         return NULL;
@@ -277,10 +316,10 @@ static uint8_t *open_xvfb_shm(EGLXvfb_t *self, const char *path)
     pixels_offset = ntohl(header->header_size) + (ntohl(header->ncolors)) * sizeof(XWDColor);
     self->view_width = self->width = ntohl(header->window_width);
     self->view_height = self->height = ntohl(header->window_height);
-    size = self->width * self->height * sizeof(uint32_t) + pixels_offset;
+    self->map_size = self->width * self->height * sizeof(uint32_t) + pixels_offset;
 
     munmap(header, 4096);
-    header = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+    header = mmap(NULL, self->map_size, PROT_READ, MAP_SHARED, self->shm_fd, 0);
     if (!header) {
         LOGW("re-mmap fail\n");
         return NULL;
@@ -297,24 +336,17 @@ bool EGLXvfb_connect(EGLXvfb_t *self, const char *dir)
 {
     char path[1024] = {0};
 
-    snprintf(path, sizeof(path), "%s/Xvfb_screen0", dir);
-    self->pixel_data = open_xvfb_shm(self, path);
-
-    snprintf(path, sizeof(path), "%s/Xdamage", dir);
-    self->damage_fd = connect_to_uds(path);
-
-    snprintf(path, sizeof(path), "%s/Xtest", dir);
-    self->xtest_fd = connect_to_uds(path);
-
+    snprintf(path, sizeof(path), "%s/Xvfb_shm", dir);
+    self->pixel_data = get_xvfb_shm_and_fds(self, path, &self->xtest_fd, &self->xdamage_fd);
     self->resize_fd = eventfd(0, 0);
 
-    if (!self->pixel_data || self->damage_fd < 0 ||
+    if (!self->pixel_data || self->xdamage_fd < 0 ||
         self->xtest_fd < 0 || self->resize_fd < 0) {
         return false;
     }
 
-    LOGI("pixel_data ptr: %p, damage fd: %d, xtest fd: %d\n",
-           (void *)self->pixel_data, self->damage_fd, self->xtest_fd);
+    LOGI("pixel_data ptr: %p, xdamage fd: %d, xtest fd: %d\n",
+           (void *)self->pixel_data, self->xdamage_fd, self->xtest_fd);
     return true;
 }
 
@@ -325,7 +357,7 @@ static void draw_loop(EGLXvfb_t *self)
     uint64_t dummy = 0;
     uint8_t dummy_buf[128] = {0};
     struct pollfd pfds[] = {
-        {.fd=self->damage_fd, .events=POLLIN},
+        {.fd=self->xdamage_fd, .events=POLLIN},
         {.fd=self->resize_fd, .events=POLLIN}
     };
 
@@ -361,7 +393,7 @@ static void draw_loop(EGLXvfb_t *self)
             break;
         }
 
-        read(self->damage_fd, &dummy_buf, sizeof(dummy_buf));
+        read(self->xdamage_fd, &dummy_buf, sizeof(dummy_buf));
 
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
@@ -387,6 +419,31 @@ uint16_t EGLXvfb_normalize_y(EGLXvfb_t *self, uint16_t y)
 }
 
 
+void EGLXvfb_cleanup(EGLXvfb_t *self)
+{
+    if (self->xdamage_fd > 0) {
+        close(self->xdamage_fd);
+    }
+    if (self->xtest_fd > 0) {
+        close(self->xtest_fd);
+    }
+    if (self->resize_fd > 0) {
+        close(self->resize_fd);
+    }
+    if (self->pixel_data) {
+        munmap(self->pixel_data, self->map_size);
+    }
+    if (self->shm_fd > 0) {
+        close(self->shm_fd);
+    }
+    if (self->egl_context) {
+        eglDestroyContext(self->egl_display, self->egl_context);
+    }
+    if (self->egl_surface) {
+        eglDestroySurface(self->egl_display, self->egl_surface);
+    }
+}
+
 void *EGLXvfb_gl_thread(void *arg)
 {
     EGLXvfb_t *self = (EGLXvfb_t *)arg;
@@ -411,6 +468,7 @@ void *EGLXvfb_gl_thread(void *arg)
     self->running = true;
     draw_loop(self);
 
+    eglDestroyContext(self->egl_display, child_egl_ctx);
     return NULL;
 }
 

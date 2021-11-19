@@ -3,17 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <sys/eventfd.h>
-#include <sys/param.h>
-#include <pthread.h>
+#include <sys/socket.h>
 
 #include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
 #include <X11/extensions/Xdamage.h>
 
 
-int main(void)
+int xdamage_main(int fd)
 {
     int damage_event = 0;
     int damage_error = 0;
@@ -24,13 +20,13 @@ int main(void)
 
     display = XOpenDisplay(NULL);
     if (!display) {
-        fprintf(stderr, "XOpenDisplay fail.\n");
+        fprintf(stderr, "Xdamage: XOpenDisplay fail.\n");
         return 1;
     }
     root = DefaultRootWindow(display);
 
     if (!XDamageQueryExtension(display, &damage_event, &damage_error)) {
-        fprintf(stderr, "XDamageQueryExtension fail.\n");
+        fprintf(stderr, "Xdamage: XDamageQueryExtension fail.\n");
         return 1;
     }
     XDamageCreate(display, root, XDamageReportNonEmpty);
@@ -42,11 +38,17 @@ int main(void)
             dev = (XDamageNotifyEvent *)&event;
 
             XDamageSubtract(display, dev->damage, None, None);
-            write(1, "x", sizeof(uint8_t));
+
+            if (sizeof(uint8_t) != send(fd, "x", sizeof(uint8_t), MSG_NOSIGNAL)) {
+                fprintf(stderr, "Xdamage: bad write\n");
+                break;
+            }
         }
     }
 
     XCloseDisplay(display);
+    close(fd);
+    fprintf(stderr, "XDamage loop done.\n");
 
     return 0;
 }

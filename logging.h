@@ -11,8 +11,8 @@
 
 #else /* Not ANDROID_BUILD */
 
-    #define LOGI(...) fprintf(stderr, "[AndroidEGLXvfb] " __VA_ARGS__)
-    #define LOGW(...) fprintf(stderr, "[AndroidEGLXvfb] " __VA_ARGS__)
+    #define LOGI(...) fprintf(stderr, "[EGLXvfb] " __VA_ARGS__)
+    #define LOGW(...) fprintf(stderr, "[EGLXvfb] " __VA_ARGS__)
 
 #endif /* ANDROID_BUILD */
 

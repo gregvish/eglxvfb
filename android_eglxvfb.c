@@ -43,7 +43,9 @@ static int start_egl_thread(struct engine* engine)
 
 static int engine_init_display(struct engine* engine)
 {
-    if (!EGLXvfb_connect(&engine->egl_xvfb, "/data/data/com.androideglxvfb/files/")) {
+    memset(&engine->egl_xvfb, 0, sizeof(engine->egl_xvfb));
+
+    if (!EGLXvfb_connect(&engine->egl_xvfb, "/eglxvfb")) {
         LOGW("EGLXvfb_connect fail");
         return 1;
     }
@@ -58,6 +60,8 @@ static int engine_init_display(struct engine* engine)
 
 static void engine_term_display(struct engine* engine)
 {
+    LOGI("term_display");
+    EGLXvfb_cleanup(&engine->egl_xvfb);
 }
 
 static int32_t xlate_ButtonState(int32_t state)
