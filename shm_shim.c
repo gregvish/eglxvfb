@@ -32,6 +32,7 @@ int shmget(key_t key, size_t size, int shmflg)
         private = true;
     }
 
+    mkdir(SHM_PATH, 0777);
     snprintf(path, sizeof(path), "%s/%d-%d", SHM_PATH, private, key);
     fd = open(path, flags, 0644);
 
