@@ -41,6 +41,14 @@ static int start_egl_thread(struct engine* engine)
     return 0;
 }
 
+static void stop_egl_thread(struct engine* engine)
+{
+    LOGI("stop_egl_thread");
+
+    EGLXvfb_stop(&engine->egl_xvfb);
+    pthread_join(engine->gl_thread, NULL);
+}
+
 static int engine_init_display(struct engine* engine)
 {
     memset(&engine->egl_xvfb, 0, sizeof(engine->egl_xvfb));
@@ -61,7 +69,9 @@ static int engine_init_display(struct engine* engine)
 static void engine_term_display(struct engine* engine)
 {
     LOGI("term_display");
+
     EGLXvfb_cleanup(&engine->egl_xvfb);
+    memset(&engine->egl_xvfb, 0, sizeof(engine->egl_xvfb));
 }
 
 static int32_t xlate_ButtonState(int32_t state)
@@ -165,21 +175,17 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd)
             break;
 
         case APP_CMD_INIT_WINDOW:
-            if (engine->app->window != NULL) {
-                engine_init_display(engine);
+            if (engine->app->window == NULL) {
+                LOGW("Window NULL during init");
+                break;
             }
-            break;
-
-        case APP_CMD_TERM_WINDOW:
-            engine_term_display(engine);
-            break;
-
-        case APP_CMD_GAINED_FOCUS:
+            engine_init_display(engine);
             start_egl_thread(engine);
             break;
 
-        case APP_CMD_LOST_FOCUS:
-            EGLXvfb_stop(&engine->egl_xvfb);
+        case APP_CMD_TERM_WINDOW:
+            stop_egl_thread(engine);
+            engine_term_display(engine);
             break;
     }
 }
@@ -213,7 +219,6 @@ void android_main(struct android_app* state)
 
             // Check if we are exiting.
             if (state->destroyRequested != 0) {
-                engine_term_display(&engine);
                 return;
             }
         }

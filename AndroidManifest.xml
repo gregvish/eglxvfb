@@ -15,11 +15,9 @@
          This will take care of integrating with our NDK code. -->
     <activity android:name="android.app.NativeActivity"
               android:label="@string/app_name"
-              android:maxAspectRatio="2.0"
-              android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
-              android:resizeableActivity="false"
-              android:screenOrientation="sensorLandscape"
-              android:configChanges="orientation|keyboardHidden">
+              android:theme="@style/AppTheme.MyTheme"
+              android:screenOrientation="landscape"
+              android:configChanges="">
 
       <meta-data android:name="android.app.lib_name"
                  android:value="androideglxvfb" />

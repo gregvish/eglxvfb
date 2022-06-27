@@ -221,7 +221,7 @@ static void gl_setup_scene()
 static void gl_draw_scene(GLuint texture)
 {
     // clear
-    glClearColor(0.0f, 0.3f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // draw quad
@@ -293,24 +293,25 @@ static uint8_t *get_xvfb_shm_and_fds(EGLXvfb_t *self, const char *path,
     XWDFileHeader *header = NULL;
     uint16_t pixels_offset = 0;
     uint8_t dummy = 0;
+    uint8_t *retval = NULL;
 
     sock_fd = connect_to_abstract_uds(path);
     if (sock_fd < 0) {
         LOGW("Xvfb UDS connect fail\n");
-        return NULL;
+        goto Cleanup;
     }
 
     if (!read_fd_from_uds(sock_fd, &self->shm_fd, &dummy, sizeof(dummy)) ||
         !read_fd_from_uds(sock_fd, xtest_fd_ptr, &dummy, sizeof(dummy)) ||
         !read_fd_from_uds(sock_fd, xdamage_fd_ptr, &dummy, sizeof(dummy))) {
         LOGW("Xvfb read fds from UDS fail\n");
-        return NULL;
+        goto Cleanup;
     }
 
     header = mmap(NULL, 4096, PROT_READ, MAP_SHARED, self->shm_fd, 0);
     if (!header) {
         LOGW("mmap fail\n");
-        return NULL;
+        goto Cleanup;
     }
 
     pixels_offset = ntohl(header->header_size) + (ntohl(header->ncolors)) * sizeof(XWDColor);
@@ -322,13 +323,20 @@ static uint8_t *get_xvfb_shm_and_fds(EGLXvfb_t *self, const char *path,
     header = mmap(NULL, self->map_size, PROT_READ, MAP_SHARED, self->shm_fd, 0);
     if (!header) {
         LOGW("re-mmap fail\n");
-        return NULL;
+        goto Cleanup;
     }
 
     LOGI("Xvfb width: %d height: %d pixel data offset: %d\n",
            self->width, self->height, pixels_offset);
 
-    return ((uint8_t *)header + pixels_offset);
+    retval = ((uint8_t *)header + pixels_offset);
+
+Cleanup:
+    if (sock_fd > 0) {
+        close(sock_fd);
+    }
+
+    return retval;
 }
 
 
@@ -372,6 +380,8 @@ static void draw_loop(EGLXvfb_t *self)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     LOGI("GL error after texture setup: %d\n", glGetError());
+
+    glViewport(0, 0, self->view_width, self->view_height);
 
     while (self->running) {
         gl_draw_scene(texture);
@@ -477,3 +487,4 @@ void EGLXvfb_stop(EGLXvfb_t *self)
     self->running = false;
     write(self->resize_fd, &((uint64_t[1]){1}), sizeof(uint64_t));
 }
+
