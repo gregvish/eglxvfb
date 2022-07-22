@@ -20,15 +20,20 @@ export DISPLAY=$XVFB_DISPLAY
 $BUILD_DIR/fd_server $XVFB_DIR/Xvfb_screen0 $ABSTRACT_DIR/Xvfb_shm &
 
 
-xrdb -merge $BUILD_DIR/../Xresources
+export HOME=/home/user
+export USER=user
 
+xrdb -merge $BUILD_DIR/../Xresources
 
 export $(dbus-launch)
 xfwm4 --sm-client-disable &
+
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/mesa/lib/aarch64-linux-gnu/
 export VK_ICD_FILENAMES=/opt/mesa/share/vulkan/icd.d/freedreno_icd.aarch64.json
 export GALLIUM_DRIVER=zink
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 
-bash
+
+synapse
+
