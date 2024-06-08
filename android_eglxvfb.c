@@ -163,6 +163,67 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event)
     return 1;
 }
 
+void set_immersive_mode(ANativeActivity* activity) {
+    JavaVM* javaVM = activity->vm;
+    JNIEnv* env = NULL;
+    bool didAttach = false;
+
+    jint res = (*javaVM)->GetEnv(javaVM, (void**)&env, JNI_VERSION_1_6);
+
+    if (res == JNI_EDETACHED) {
+        if ((*javaVM)->AttachCurrentThread(javaVM, &env, NULL) != 0) {
+            LOGW("set_immersive_mode AttachCurrentThread failed");
+            return;
+        }
+        didAttach = true;
+
+    } else if (res != JNI_OK) {
+        LOGW("set_immersive_mode GetEnv failed");
+        return;
+    }
+
+    jclass activityClass = (*env)->GetObjectClass(env, activity->clazz);
+    jmethodID getWindowMethod = (*env)->GetMethodID(
+        env, activityClass, "getWindow", "()Landroid/view/Window;"
+    );
+    jobject window = (*env)->CallObjectMethod(env, activity->clazz, getWindowMethod);
+    jclass windowClass = (*env)->GetObjectClass(env, window);
+    jmethodID getDecorViewMethod = (*env)->GetMethodID(
+        env, windowClass, "getDecorView", "()Landroid/view/View;"
+    );
+    jobject decorView = (*env)->CallObjectMethod(env, window, getDecorViewMethod);
+    jclass viewClass = (*env)->GetObjectClass(env, decorView);
+    jmethodID setSystemUiVisibilityMethod = (*env)->GetMethodID(
+        env, viewClass, "setSystemUiVisibility", "(I)V"
+    );
+
+    const int flags =
+        0x00000100 | // View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        0x00000002 | // View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        0x00000004 | // View.SYSTEM_UI_FLAG_FULLSCREEN
+        0x00001000 | // View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        0x00000010 | // View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        0x00000004;  // View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+    (*env)->CallVoidMethod(env, decorView, setSystemUiVisibilityMethod, flags);
+
+    (*env)->DeleteLocalRef(env, decorView);
+    (*env)->DeleteLocalRef(env, window);
+    (*env)->DeleteLocalRef(env, windowClass);
+    (*env)->DeleteLocalRef(env, activityClass);
+
+    if (didAttach) {
+        (*javaVM)->DetachCurrentThread(javaVM);
+    }
+}
+
+void activity_onStart(ANativeActivity* activity) {
+    set_immersive_mode(activity);
+}
+
+void activity_onResume(ANativeActivity* activity) {
+    set_immersive_mode(activity);
+}
+
 static void engine_handle_cmd(struct android_app* app, int32_t cmd)
 {
     struct engine* engine = (struct engine*)app->userData;
@@ -198,6 +259,8 @@ void android_main(struct android_app* state)
     state->userData = &engine;
     state->onAppCmd = engine_handle_cmd;
     state->onInputEvent = engine_handle_input;
+    state->activity->callbacks->onStart = activity_onStart;
+    state->activity->callbacks->onResume = activity_onResume;
     engine.app = state;
 
     if (state->savedState != NULL) {

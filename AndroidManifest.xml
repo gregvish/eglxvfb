@@ -3,7 +3,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="com.androideglxvfb">
 
-  <uses-sdk android:minSdkVersion="26"/>-
+  <uses-sdk android:minSdkVersion="28"/>-
 
   <application
       android:allowBackup="false"
@@ -17,7 +17,7 @@
               android:label="@string/app_name"
               android:theme="@style/AppTheme.MyTheme"
               android:screenOrientation="landscape"
-              android:configChanges="">
+              android:configChanges="orientation|keyboardHidden|screenSize">
 
       <meta-data android:name="android.app.lib_name"
                  android:value="androideglxvfb" />
